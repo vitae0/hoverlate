@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hoverlate"
+version = "0.1.0"
+description = "Translate words in games and apps by hovering over on-screen text."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Hoverlate contributors" }]
+dependencies = [
+    "PySide6>=6.6,<7",
+    "mss>=10.2,<13",
+    "Pillow>=10,<13",
+    "pytesseract>=0.3.13,<1",
+    "python-xlib>=0.33,<1",
+    "deep-translator>=1.11,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+hoverlate = "hoverlate.app:main"
+
+[tool.setuptools.packages.find]
+include = ["hoverlate*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
