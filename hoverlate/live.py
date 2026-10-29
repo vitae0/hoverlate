@@ -192,6 +192,27 @@ def stream_loop(fd, node, settings, events, stop):
     if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
         raise RuntimeError("Could not start PipeWire stream")
     translator = ThrottledTranslator(settings.source, settings.target)
+    # Capture cursor ROI *before* videoconvert. Some video transforms can
+    # drop/alter GstVideoRegionOfInterestMeta on their output buffers.
+    cursor_state = {"last": None, "seen_at": 0.0, "source_frames": 0,
+                    "cursor_frames": 0}
+    cursor_lock = threading.Lock()
+
+    def capture_source_cursor(_pad, info):
+        buffer = info.get_buffer()
+        if buffer is None:
+            return Gst.PadProbeReturn.OK
+        position = get_cursor_metadata(buffer)
+        with cursor_lock:
+            cursor_state["source_frames"] += 1
+            if position is not None:
+                cursor_state["last"] = position
+                cursor_state["seen_at"] = time.monotonic()
+                cursor_state["cursor_frames"] += 1
+        return Gst.PadProbeReturn.OK
+
+    probe_pad = src.get_static_pad("src")
+    probe_id = probe_pad.add_probe(Gst.PadProbeType.BUFFER, capture_source_cursor)
     last_position = None
     steady_since = time.monotonic()
     last_ocr = 0.0
@@ -207,9 +228,24 @@ def stream_loop(fd, node, settings, events, stop):
                 continue
             cursor = get_cursor_metadata(sample.get_buffer())
             if cursor is None:
-                if time.monotonic() - first_frame > 8:
-                    raise RuntimeError("No cursor metadata received. Is ScreenCast cursor mode 4 supported?")
-                continue
+                with cursor_lock:
+                    cursor = cursor_state["last"]
+                    last_seen = cursor_state["seen_at"]
+                    frames_seen = cursor_state["source_frames"]
+                    cursor_frames = cursor_state["cursor_frames"]
+                # A brief gap in cursor metadata is normal; reuse the most
+                # recent source-side position, not an unrelated OCR result.
+                if cursor is not None and time.monotonic() - last_seen > 3.0:
+                    cursor = None
+                if cursor is None:
+                    if time.monotonic() - first_frame > 15:
+                        raise RuntimeError(
+                            "No PipeWire cursor position available "
+                            f"(source frames={frames_seen}, cursor ROI frames={cursor_frames}). "
+                            "ScreenCast supports cursor mode 4 in theory, but "
+                            "this stream did not expose usable cursor metadata."
+                        )
+                    continue
             now = time.monotonic()
             if last_position is None or math.dist(cursor, last_position) > 8:
                 last_position = cursor
@@ -250,6 +286,7 @@ def stream_loop(fd, node, settings, events, stop):
             events.show.emit(word, translation, cursor[0], cursor[1])
             last_word = word
     finally:
+        probe_pad.remove_probe(probe_id)
         pipeline.set_state(Gst.State.NULL)
 
 
@@ -284,8 +321,13 @@ def main(argv=None):
     tip = QLabel()
     tip.setWordWrap(True)
     tip.setMaximumWidth(370)
-    tip.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.WindowStaysOnTopHint |
-                       Qt.WindowType.FramelessWindowHint)
+    # A top-level Qt.ToolTip is an xdg_popup on Wayland and requires a
+    # transient parent. Use an ordinary non-activating window instead.
+    # Compositors may ignore absolute tip.move() placement.
+    tip.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint |
+                       Qt.WindowType.FramelessWindowHint |
+                       Qt.WindowType.WindowDoesNotAcceptFocus |
+                       Qt.WindowType.WindowTransparentForInput)
     tip.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
     tip.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
     tip.setStyleSheet(
