@@ -255,7 +255,8 @@ def stream_loop(fd, node, settings, events, stop):
                 steady_since = now
                 last_word = None
                 events.hide.emit()
-            if now - steady_since < settings.dwell_ms / 1000 or now - last_ocr < 1.0:
+            if (now - steady_since < settings.dwell_ms / 1000
+                    or now - last_ocr < (1.0 if last_word is not None else 0.20)):
                 continue
             last_ocr = now
             data = read_sample(sample, cursor=cursor)
@@ -283,7 +284,7 @@ def stream_loop(fd, node, settings, events, stop):
                 print(f"Hoverlate live: translation temporarily unavailable: {exc}",
                       file=sys.stderr, flush=True)
                 continue
-            if translation is None:
+            if not translation:
                 # Request pacing/cooldown is active; check again on later frames.
                 continue
             events.show.emit(word, translation, cursor[0], cursor[1])
@@ -298,7 +299,7 @@ def main(argv=None):
     parser.add_argument("--source", default="de")
     parser.add_argument("--target", default="en")
     parser.add_argument("--ocr-lang", default="deu+eng")
-    parser.add_argument("--dwell-ms", type=int, default=400)
+    parser.add_argument("--dwell-ms", type=int, default=150)
     parser.add_argument("--translator", choices=["dictionary", "offline", "auto", "google"],
                         default="dictionary",
                         help="Offline FreeDict is the default. Google is explicit opt-in.")
@@ -326,7 +327,7 @@ def main(argv=None):
     app.setQuitOnLastWindowClosed(False)
     tip = QLabel()
     tip.setWordWrap(True)
-    tip.setMaximumWidth(370)
+    tip.setMaximumWidth(240)
     # A top-level Qt.ToolTip is an xdg_popup on Wayland and requires a
     # transient parent. Use an ordinary non-activating window instead.
     # Compositors may ignore absolute tip.move() placement.
@@ -337,15 +338,15 @@ def main(argv=None):
     tip.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
     tip.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
     tip.setStyleSheet(
-        "color: white; background: #181b22; border: 1px solid #596171; "
-        "border-radius: 8px; padding: 11px;")
+        "color: white; background: #242833; border: 1px solid #434958; "
+        "border-radius: 7px; padding: 6px 9px; font-size: 13px; font-weight: 500;")
     events = Events()
 
     def present(word, english, x, y):
-        tip.setText(f"{word} → {english}")
+        tip.setText(english)
         tip.adjustSize()
         # Best effort: absolute popup positioning is compositor-controlled on Wayland.
-        tip.move(x + 18, y + 20)
+        tip.move(x + 12, y + 16)
         tip.show()
 
     events.show.connect(present)
