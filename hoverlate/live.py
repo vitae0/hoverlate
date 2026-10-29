@@ -131,21 +131,11 @@ def get_cursor_metadata(buffer):
     return int(roi.x), int(roi.y)
 
 
-def recognize_crop(image, cursor, lang):
-    from PIL import Image, ImageOps
-    import pytesseract
-    from .ocr import hovered_word
-
-    x, y = cursor
-    left, top = max(0, x - 260), max(0, y - 100)
-    right, bottom = min(image.width, x + 260), min(image.height, y + 100)
-    if left >= right or top >= bottom:
-        return None
-    crop = ImageOps.autocontrast(ImageOps.grayscale(image.crop((left, top, right, bottom))))
-    crop = crop.resize((crop.width * 2, crop.height * 2), Image.Resampling.LANCZOS)
-    data = pytesseract.image_to_data(
-        crop, lang=lang, config="--psm 11", output_type=pytesseract.Output.DICT)
-    return hovered_word(data, (x - left) * 2, (y - top) * 2)
+def recognize_crop(image, cursor, lang, known_word=None, mode="adaptive"):
+    from .vision import recognize_image_at
+    return recognize_image_at(
+        image, cursor, lang=lang, known_word=known_word, mode=mode
+    )
 
 
 def read_sample(sample, cursor=None):
@@ -204,6 +194,10 @@ def stream_loop(fd, node, settings, events, stop):
     if not (src.link(converter) and converter.link(caps) and caps.link(sink)):
         raise RuntimeError("Could not connect the video pipeline")
     translator = make_translator(settings.source, settings.target, settings.translator)
+    # Never invoke the optional online translator from an OCR validator.
+    known_word = (translator.has_word if hasattr(translator, "has_word")
+                  else None)
+    from .vision import region_fingerprint
     # Capture cursor ROI *before* videoconvert. Some video transforms can
     # drop/alter GstVideoRegionOfInterestMeta on their output buffers.
     cursor_state = {"last": None, "seen_at": 0.0, "source_frames": 0,
@@ -232,6 +226,8 @@ def stream_loop(fd, node, settings, events, stop):
     steady_since = time.monotonic()
     last_ocr = float("-inf")
     last_word = None
+    last_frame_signature = None
+    last_frame_checked_at = 0.0
     ocr_failures = 0
     first_frame = time.monotonic()
     try:
@@ -268,6 +264,7 @@ def stream_loop(fd, node, settings, events, stop):
                 steady_since = now
                 last_ocr = float("-inf")  # New word: honor the 150 ms dwell, not the prior scan.
                 last_word = None
+                last_frame_signature = None
                 events.hide.emit()
             if not should_scan_ocr(
                 now, steady_since, last_ocr, settings.dwell_ms, last_word is not None
@@ -279,7 +276,18 @@ def stream_loop(fd, node, settings, events, stop):
                 if data is None:
                     continue
                 cursor, image = data
-                word = recognize_crop(image, cursor, settings.ocr_lang)
+                signature = region_fingerprint(image, cursor)
+                # Once a static game/dialogue frame was checked, do not spend
+                # CPU repeatedly OCRing identical pixels. Refresh occasionally.
+                if (signature is not None and signature == last_frame_signature
+                        and now - last_frame_checked_at < 8.0):
+                    continue
+                last_frame_signature = signature
+                last_frame_checked_at = now
+                word = recognize_crop(
+                    image, cursor, settings.ocr_lang,
+                    known_word=known_word, mode=settings.ocr_mode
+                )
             except Exception as exc:
                 ocr_failures += 1
                 if ocr_failures >= 3:
@@ -325,6 +333,8 @@ def main(argv=None):
     parser.add_argument("--source", default="de")
     parser.add_argument("--target", default="en")
     parser.add_argument("--ocr-lang", default="deu+eng")
+    parser.add_argument("--ocr-mode", choices=["adaptive", "fast"],
+                        default="adaptive", help="Adaptive game-font OCR (up to two passes)")
     parser.add_argument("--dwell-ms", type=int, default=150)
     parser.add_argument("--translator", choices=["dictionary", "offline", "auto", "google"],
                         default="dictionary",
@@ -332,6 +342,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.dwell_ms < 100:
         parser.error("Dwell must be at least 100 milliseconds")
+    # Tesseract's OpenMP worker pool can otherwise use all CPU cores for
+    # tiny OCR crops. The one-shot OCR process needs only one worker.
+    os.environ.setdefault("OMP_THREAD_LIMIT", "1")
     if not shutil.which("tesseract"):
         parser.error("Install tesseract-ocr and tesseract-ocr-deu")
     try:
