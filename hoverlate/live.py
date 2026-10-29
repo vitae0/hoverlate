@@ -300,9 +300,11 @@ def stream_loop(fd, node, settings, events, stop):
                 )
             except Exception as exc:
                 ocr_failures += 1
-                if ocr_failures >= 3:
-                    raise RuntimeError(f"OCR failed three times: {exc}") from exc
-                print(f"Hoverlate OCR: temporary error: {exc}", file=sys.stderr)
+                # An OCR timeout/temporary failure is not a reason to stop
+                # screen sharing. Avoid flooding the terminal during outages.
+                if ocr_failures == 1 or ocr_failures % 10 == 0:
+                    print(f"Hoverlate OCR: temporary error ({ocr_failures}): {exc}",
+                          file=sys.stderr)
                 continue
             ocr_failures = 0
             if not word:
