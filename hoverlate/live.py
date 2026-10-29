@@ -320,6 +320,8 @@ def stream_loop(fd, node, settings, events, stop):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Continuous Wayland hover translation")
+    from . import __version__
+    parser.add_argument("--version", action="version", version=f"Hoverlate {__version__}")
     parser.add_argument("--source", default="de")
     parser.add_argument("--target", default="en")
     parser.add_argument("--ocr-lang", default="deu+eng")
