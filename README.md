@@ -2,6 +2,28 @@
 
 Translate German words by hovering over them in games, without cloud translation.
 
+## v0.7.0: game-font recognition, real English glosses and lower CPU usage
+
+This release addresses three problems observed during real game use:
+
+- **Visual OCR:** recognises pixels around the cursor, including text drawn into game scenes rather than accessible application text. A 380x140 crop is contrast-adjusted, inverted for dark dialogue boxes and sharpened. If the first pass fails, adaptive mode tries one binary/sparse-text pass. This remains Tesseract OCR; decorative fonts may still be misread.
+- **English translations:** skips the German headword, IPA pronunciations and grammatical labels before displaying the first short English gloss. Glosses are cached; no online translation is used by default.
+- **Conjugated German verbs:** resolves common irregular forms (e.g. `ging` → `gehen`) and regular endings (e.g. `spielte` → `spielen`). Accepts a guess only if FreeDict has a usable English gloss. It is not a complete German morphological analyzer.
+- **CPU:** default Tesseract language is now German-only (`deu`), OpenMP uses one thread, frames beyond **12 FPS** are dropped *before* RGB conversion, OCR works on smaller crops, and identical static game text is not repeatedly OCRed for eight seconds.
+- **Stability:** isolated OCR errors and timeouts no longer close the screen-sharing session.
+
+The first-hover delay remains **150 ms**. Actual latency also depends on OCR processing time and how often the portal sends frames.
+
+~~~bash
+hoverlate                              # adaptive graphics OCR, 12 FPS, 150 ms
+hoverlate --ocr-mode fast              # one OCR pass, lowest CPU
+hoverlate --capture-fps 8              # fewer frames, somewhat slower response
+hoverlate --ocr-lang deu+eng           # optional mixed German-English OCR
+hoverlate-dict lookup ging             # tests German inflection resolution
+~~~
+
+No additional Python, ML or CUDA dependencies are needed.
+
 ## v0.6.2: small quality-of-life and stability update
 
 - **150 ms first hover stays fast:** each significant cursor movement clears the previous OCR delay, so a new word is checked promptly.
