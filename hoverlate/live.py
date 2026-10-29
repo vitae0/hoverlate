@@ -170,7 +170,8 @@ def stream_loop(fd, node, settings, events, stop):
     gi.require_version("Gst", "1.0")
     gi.require_version("GstVideo", "1.0")
     from gi.repository import Gst
-    from .translate import ThrottledTranslator, TranslationRateLimited
+    from .translate import TranslationRateLimited
+    from .offline import make_translator
 
     Gst.init(None)
     src = Gst.ElementFactory.make("pipewiresrc", "capture")
@@ -190,7 +191,7 @@ def stream_loop(fd, node, settings, events, stop):
         pipeline.add(elem)
     if not (src.link(converter) and converter.link(caps) and caps.link(sink)):
         raise RuntimeError("Could not connect the video pipeline")
-    translator = ThrottledTranslator(settings.source, settings.target)
+    translator = make_translator(settings.source, settings.target, settings.translator)
     # Capture cursor ROI *before* videoconvert. Some video transforms can
     # drop/alter GstVideoRegionOfInterestMeta on their output buffers.
     cursor_state = {"last": None, "seen_at": 0.0, "source_frames": 0,
@@ -298,6 +299,8 @@ def main(argv=None):
     parser.add_argument("--target", default="en")
     parser.add_argument("--ocr-lang", default="deu+eng")
     parser.add_argument("--dwell-ms", type=int, default=400)
+    parser.add_argument("--translator", choices=["auto", "offline", "google"],
+                        default="auto", help="Prefer installed offline model; otherwise Google")
     args = parser.parse_args(argv)
     if args.dwell_ms < 100:
         parser.error("Dwell must be at least 100 milliseconds")
