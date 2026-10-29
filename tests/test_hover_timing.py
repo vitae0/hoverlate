@@ -2,7 +2,7 @@
 
 import pytest
 
-from hoverlate.live import should_scan_ocr
+from hoverlate.live import should_scan_ocr, should_forward_frame
 
 
 def test_first_scan_after_150_ms_dwell():
@@ -33,3 +33,11 @@ def test_custom_dwell_is_honored(dwell):
     now = 25.0
     assert not should_scan_ocr(now + dwell / 1000 - 0.01, now, float("-inf"), dwell, False)
     assert should_scan_ocr(now + dwell / 1000 + 0.01, now, float("-inf"), dwell, False)
+
+
+
+def test_capture_fps_gate_drops_excess_frames_before_conversion():
+    assert should_forward_frame(100.0, float("-inf"), 12)
+    assert not should_forward_frame(100.01, 100.0, 12)
+    assert should_forward_frame(100.10, 100.0, 12)
+    assert should_forward_frame(100.20, 100.10, 12)
