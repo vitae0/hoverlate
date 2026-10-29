@@ -1,98 +1,82 @@
 # Hoverlate
 
-Translate German words in games without leaving the game.
+**Translate German words by hovering over them, including inside games.**
 
-**v0.3: Keyboard shortcut → select a word → English translation.** GNOME Wayland uses the standard XDG Screenshot portal. No GNOME Shell extension, background daemon, or global mouse tracking. The older X11 automatic hover implementation remains available for X11 sessions.
+Hoverlate v0.4 restores **continuous cursor tracking and live OCR** on Wayland. Instead of a GNOME Shell extension, it uses ScreenCast desktop portal permissions and PipeWire cursor metadata. Once you approve screen sharing, Hoverlate reads the word below your cursor after ~400 ms of stillness.
 
-## Ubuntu / GNOME Wayland
+> **Experimental:** The live GNOME Wayland backend has not been end-to-end tested on GNOME Shell 50.1 or Bad End Theater. Cursor metadata availability and tooltip positioning are compositor-dependent.
 
-~~~bash
-sudo apt update
-sudo apt install -y python3-venv python3-pip tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
-git clone https://github.com/vitae0/hoverlate.git
-cd hoverlate
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-hoverlate-snap
-~~~
+## Ubuntu GNOME Wayland
 
-If Hoverlate is already cloned and installed:
+In your existing Hoverlate checkout:
 
 ~~~bash
 cd ~/hoverlate
 git pull --ff-only
+sudo apt update
+sudo apt install -y python3-venv python3-gi python3-gst-1.0 \
+  gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 \
+  gstreamer1.0-pipewire gstreamer1.0-plugins-base \
+  tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+~~~
+
+Ubuntu provides GStreamer and PyGObject as system Python packages. Make sure your virtual environment can see them:
+
+~~~bash
+deactivate 2>/dev/null || true
+python3 -m venv --clear --system-site-packages .venv
 source .venv/bin/activate
 python -m pip install -e .
-hoverlate-snap
-~~~
-
-1. GNOME's standard screenshot picker opens. Select **Selection** and drag a small rectangle around the German word or phrase.
-2. Confirm the screenshot with Enter (or the capture button).
-3. Hoverlate recognizes the text and shows its English translation in an always-on-top window.
-4. Close the popup when finished.
-
-GNOME may save a screenshot copy to Pictures/Screenshots and/or your clipboard. Hoverlate does not take additional screenshots or send image data to the translation provider. Recognized **text** is sent to Google Translate using the unofficial deep-translator client. Do not use it on sensitive text.
-
-### Keyboard shortcut
-
-Open **Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts → Add Shortcut**.
-
-- Name: Hoverlate
-- Command: absolute path to your Python environment's Hoverlate shortcut entrypoint, for example /home/USERNAME/hoverlate/.venv/bin/hoverlate-snap
-- Shortcut: e.g., Ctrl+Alt+Y
-
-Find your executable after activating the environment:
-
-~~~bash
-command -v hoverlate-snap
-~~~
-
-You no longer need to open a terminal. Each screenshot still requires confirmation from GNOME; this is the Wayland security boundary.
-
-### Retire the old GNOME extension
-
-The experimental v0.2 GNOME extension is **not needed**. If it was enabled, disable it:
-
-~~~bash
-gnome-extensions disable hoverlate@hoverlate.dev
-~~~
-
-You do not need to log out or restart GNOME Shell for v0.3.
-
-## X11 automatic hover mode (experimental)
-
-On X11, the original hover-translation background process is still available:
-
-~~~bash
-echo $XDG_SESSION_TYPE
 hoverlate
 ~~~
 
-The default hoverlate command detects Wayland and opens the screenshot picker instead. Use hoverlate-snap directly for the new workflow on any desktop supporting the portal.
+GNOME should show a **screen-sharing permission dialog**. Select the monitor containing the game and approve once. Move your cursor onto a German word and pause. A small translation tooltip should appear. Press **Ctrl+C** in the terminal to exit.
 
-## Languages
+No GNOME Shell extension, screenshot picker, or logout is required for this backend.
+
+Optional command-line arguments:
 
 ~~~bash
-hoverlate-snap --source de --target en --ocr-lang deu+eng
+hoverlate-live --source de --target en --ocr-lang deu+eng --dwell-ms 400
 ~~~
 
-Source and target use Google Translate language codes; OCR uses installed Tesseract language packs.
+The default hoverlate command uses this live mode on Wayland, and the older automatic hover backend on X11.
 
-## Limitations and privacy
+## Optional screenshot fallback
 
-- GNOME Wayland is the primary target; other portal implementations are not tested.
-- Screenshots are processed only after explicit user selection; no screen recording.
-- The Screenshot portal can save its own capture and change the system clipboard.
-- The internet translation provider may rate-limit requests.
-- OCR may fail on stylized fonts. Select a tight rectangle.
-- The new path has unit tests, but it has **not been end-to-end tested on Ubuntu GNOME 50.1 or Bad End Theater**.
-
-## Run tests
+The manual-selection v0.3 mode still exists, but **it is not the default**:
 
 ~~~bash
-pip install -e '.[dev]'
-pytest -q
+hoverlate-snap
+~~~
+
+It opens the screenshot picker only if you deliberately choose this alternative.
+
+## How live mode works
+
+1. The GNOME ScreenCast portal grants temporary access to a monitor.
+2. PipeWire streams frames and provides the cursor position as metadata (cursor mode 4).
+3. GStreamer decodes frames; the Python backend waits approximately 400 ms for the cursor to stop.
+4. OCR processes a small cursor-centred region; Google Translate returns the English word.
+5. A lightweight tooltip displays the translation.
+
+No video frames are intentionally stored on disk. **Recognized text** is transmitted to the third-party online translation service. End screen sharing when not using Hoverlate; do not use it over sensitive content.
+
+## Current limitations
+
+- This is not yet tested on an actual GNOME Shell 50.1 desktop; the real error logs are needed to verify functionality.
+- Some PipeWire or GStreamer versions might not expose cursor position metadata correctly. The app exits with an error if no cursor metadata arrives.
+- Wayland may override absolute tooltip position, meaning it might not appear exactly beside the cursor.
+- Select the correct monitor; the app cannot follow the pointer outside a monitor you share.
+- Fullscreen-exclusive games may cover the tooltip; windowed or borderless mode can help.
+- Stylized fonts and text recognition errors may cause wrong translations.
+- Translations require internet access and can be rate limited.
+
+## Tests
+
+~~~bash
+python -m pip install -e '.[dev]'
+python -m pytest -q
 ~~~
 
 MIT licensed.
