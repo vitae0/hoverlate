@@ -2,7 +2,18 @@
 
 Translate German words by hovering over them in games, without cloud translation.
 
-## v0.6.1: compact offline word popups
+## v0.6.2: small quality-of-life and stability update
+
+- **150 ms first hover stays fast:** each significant cursor movement clears the previous OCR delay, so a new word is checked promptly.
+- **Lower idle CPU usage:** if no word is found, OCR retries at most about every 800 ms; when a word is already displayed, every 2 seconds. Moving to a new word resets the interval.
+- **True single-line bubble:** long meanings are cut with an ellipsis instead of expanding into a tall tooltip.
+- **Less flicker:** equivalent uppercase/lowercase OCR reads do not trigger redundant updates; words can reappear after briefly disappearing.
+- **Recoverable OCR errors:** a couple of transient failures no longer immediately end the session; three consecutive failures still raise a meaningful error.
+- Check your installation with `hoverlate --version` (or `hoverlate-live --version`).
+
+The default is still **150 ms hover**, with local FreeDict translation. The live capture and cursor-metadata implementation are otherwise unchanged.
+
+### v0.6.1: compact offline word popups
 
 The default translation backend is now **FreeDict German -> English**, installed from Ubuntu's own package repository.
 
@@ -11,7 +22,7 @@ The default translation backend is now **FreeDict German -> English**, installed
 - Hover tooltip shows only the first short meaning (usually one to four words) in a compact, unobtrusive bubble. Missing entries produce no bubble. The default hover delay is **150 ms** (adjustable with `--dwell-ms`).
 - Live cursor tracking and OCR still use the experimental GNOME Wayland ScreenCast/PipeWire backend.
 - Exact word lookup is fast. FreeDict is a headword dictionary, not a sentence-level machine translation model. Inflected German words may not be found, and some dictionary entries contain multiple meanings.
-- Missing words are reported as missing. Hoverlate does not invent translations or silently switch to the internet.
+- Missing words produce no popup. Hoverlate does not invent translations or silently switch to the internet.
 
 ### Ubuntu GNOME Wayland: install/update
 
