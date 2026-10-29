@@ -39,7 +39,7 @@ GNOME may save a screenshot copy to Pictures/Screenshots and/or your clipboard. 
 Open **Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts → Add Shortcut**.
 
 - Name: Hoverlate
-- Command: absolute path to your Python environment's Hoverlate shortcut entrypoint, for example /home/kewcer/hoverlate/.venv/bin/hoverlate-snap
+- Command: absolute path to your Python environment's Hoverlate shortcut entrypoint, for example /home/USERNAME/hoverlate/.venv/bin/hoverlate-snap
 - Shortcut: e.g., Ctrl+Alt+Y
 
 Find your executable after activating the environment:
