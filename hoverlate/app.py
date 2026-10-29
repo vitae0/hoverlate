@@ -21,7 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", default="de", help="Translation source language (default: de)")
     parser.add_argument("--target", default="en", help="Translation target language (default: en)")
     parser.add_argument("--ocr-lang", default="deu+eng", help="Tesseract languages (default: deu+eng)")
-    parser.add_argument("--dwell-ms", type=int, default=400, help="Hover delay in milliseconds (default: 400)")
+    parser.add_argument("--dwell-ms", type=int, default=150, help="Hover delay in milliseconds (default: 150)")
     args = parser.parse_args(argv)
 
     if os.name != "posix" or sys.platform != "linux":
