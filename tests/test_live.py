@@ -31,3 +31,27 @@ def test_crop_targets_actual_cursor():
 def test_cursor_beyond_image_gives_no_word():
     image = Image.new("RGB", (100, 80), "white")
     assert recognize_crop(image, (1000, 1000), "deu") is None
+
+def test_gstreamer_cursor_roi_read_with_mocked_gi(monkeypatch):
+    import sys
+    from types import ModuleType, SimpleNamespace
+    from hoverlate.live import get_cursor_metadata
+
+    gi = ModuleType("gi")
+    repository = ModuleType("gi.repository")
+    roi = SimpleNamespace(roi_type=2, x=143, y=87)
+    repository.GstVideo = SimpleNamespace(
+        buffer_get_video_region_of_interest_meta_id=lambda buf, index: roi
+    )
+    repository.GLib = SimpleNamespace(quark_to_string=lambda quark: "cursor")
+    gi.repository = repository
+    monkeypatch.setitem(sys.modules, "gi", gi)
+    monkeypatch.setitem(sys.modules, "gi.repository", repository)
+    assert get_cursor_metadata(object()) == (143, 87)
+
+    repository.GLib.quark_to_string = lambda quark: "not-a-cursor"
+    assert get_cursor_metadata(object()) is None
+    repository.GstVideo.buffer_get_video_region_of_interest_meta_id = (
+        lambda buf, index: None
+    )
+    assert get_cursor_metadata(object()) is None
