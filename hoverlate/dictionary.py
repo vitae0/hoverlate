@@ -49,34 +49,58 @@ def summarize_definition(raw: bytes, *, limit: int = 280) -> str:
 
 
 def compact_gloss(definition: str, headword: str = "") -> str:
-    """Extract a single short English gloss for a Duolingo-style hover tip.
+    """Find the FIRST English translation, never the headword or IPA.
 
-    Avoid headword repeats, grammatical labels, alternate senses and examples.
-    Return empty if the entry has no meaningful gloss.
+    FreeDict dictd entries start with the German headword and optional
+    pronunciation/part-of-speech lines; blindly taking the first line is wrong.
     """
     if not definition:
         return ""
-    candidates = re.split(r"\s*·\s*|[\r\n]+", definition)
+    text = html.unescape(definition)
+    text = re.sub(r"<(?:br|p|div|blockquote|li)\b[^>]*>", "\n",
+                  text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]*>", " ", text)
+    lines = re.split(r"[\r\n]+|\s+·\s+", text)
+    headword_key = normalize(headword)
     labels = {"n", "v", "adj", "adv", "noun", "verb", "adjective",
-              "adverb", "f", "m", "nt", "pron", "pronoun"}
-    for candidate in candidates:
-        candidate = re.sub(
-            r"^(?:\d+[.)]\s*|(?:translation|translations|meaning|meanings)\s*:\s*)",
-            "", candidate.strip(" \t–—-: "), flags=re.IGNORECASE,
-        )
-        candidate = re.sub(r"^\([^)]{1,14}\)\s*", "", candidate)
-        candidate = re.sub(r"^\[\s*(?:noun|verb|adj|adv|n|v)\s*\]\s*", "",
-                           candidate, flags=re.IGNORECASE)
-        candidate = re.sub(r"^(?:noun|verb|adjective|adverb)\s*:\s*", "",
-                           candidate, flags=re.IGNORECASE)
-        candidate = re.split(r"\s*(?:;|\|| / | — | – |→)\s*", candidate, maxsplit=1)[0]
-        candidate = re.sub(r"\s*\([^)]{1,36}\)\s*$", "", candidate)
-        candidate = re.sub(r"\s+", " ", candidate).strip(" .,;:/·")
-        if (not candidate or normalize(candidate) == normalize(headword)
-                or normalize(candidate) in labels):
+              "adverb", "f", "m", "nt", "pron", "pronoun",
+              "masculine", "feminine", "neuter", "pl", "sing",
+              "transitive", "intransitive", "intr", "trans"}
+    for original in lines:
+        line = original.strip(" \t–—-: ")
+        if not line:
             continue
-        return " ".join(candidate.split()[:4])[:36].rstrip(" ,;:-")
+        # Headword may be followed by IPA, e.g. "gehen /ˈɡeːən/ v.".
+        if headword_key:
+            pattern = r"^" + re.escape(headword) + r"(?=$|[\s/:[(])"
+            line = re.sub(pattern, "", line, count=1, flags=re.IGNORECASE).strip()
+        # Remove IPA and phonetic transcription before considering a meaning.
+        line = re.sub(r"/[^/\n]{1,110}/", " ", line)
+        line = re.sub(r"\[[^\]\n]{1,110}\]", " ", line)
+        line = re.sub(r"\b(?:IPA|pronunciation|Aussprache|Phonetik)\s*:",
+                      " ", line, flags=re.IGNORECASE)
+        line = re.sub(r"^\s*\d+[.)]\s*", "", line)
+        # Grammar markers often appear on their own line, or ahead of a gloss.
+        for _ in range(3):
+            match = re.match(r"^\s*([A-Za-z.]{1,15})\s*(?::|\.\s*|\s+|$)", line)
+            if not match or match.group(1).rstrip(".").casefold() not in labels:
+                break
+            line = line[match.end():]
+        line = re.split(r"\s*(?:;|\|| / | — | – |→)\s*", line, maxsplit=1)[0]
+        line = re.sub(r"\s*\([^)]{1,36}\)\s*$", "", line)
+        line = re.sub(r"\s+", " ", line).strip(" .,;:/·")
+        if not line or normalize(line) == headword_key:
+            continue
+        if normalize(line) in labels:
+            continue
+        # Transcription without delimiters is still not an English gloss.
+        if not re.search(r"[A-Za-z]", line):
+            continue
+        if sum(ch in "ˈˌːɡəɐʃʊʁŋçʒθðæʔ" for ch in line) >= 2:
+            continue
+        return " ".join(line.split()[:4])[:36].rstrip(" ,;:-")
     return ""
+
 
 class FreeDictTranslator:
     """Local exact-headword dictionary lookup; never accesses the network."""
@@ -134,18 +158,21 @@ class FreeDictTranslator:
     def entry_count(self) -> int:
         return len(self._index)
 
+    def has_word(self, word: str) -> bool:
+        """Check for a usable local dictionary lemma; no internet or disk I/O."""
+        from .morphology import lemma_candidates
+        return any(candidate in self._index for candidate in lemma_candidates(normalize(word)))
+
     def try_translate(self, word: str) -> str:
-        key = normalize(word)
-        if not key:
-            return ""
-        references = self._index.get(key)
-        if not references:
-            return ""
-        for offset, size in references:
-            raw = summarize_definition(self._data[offset:offset + size])
-            meaning = compact_gloss(raw, word)
-            if meaning:
-                return meaning
+        """Resolve common inflections, then show a real English gloss only."""
+        from .morphology import lemma_candidates
+        for lemma in lemma_candidates(normalize(word)):
+            references = self._index.get(lemma, ())
+            for offset, size in references:
+                raw = self._data[offset:offset + size].decode("utf-8", errors="replace")
+                meaning = compact_gloss(raw, lemma)
+                if meaning:
+                    return meaning
         return ""
 
 
