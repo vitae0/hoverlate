@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import gzip
 import html
+from functools import lru_cache
 from pathlib import Path
 import re
 import unicodedata
@@ -159,10 +160,10 @@ class FreeDictTranslator:
         return len(self._index)
 
     def has_word(self, word: str) -> bool:
-        """Check for a usable local dictionary lemma; no internet or disk I/O."""
-        from .morphology import lemma_candidates
-        return any(candidate in self._index for candidate in lemma_candidates(normalize(word)))
+        """A valid OCR word must have an actual English gloss, not just IPA."""
+        return bool(self.try_translate(word))
 
+    @lru_cache(maxsize=4096)
     def try_translate(self, word: str) -> str:
         """Resolve common inflections, then show a real English gloss only."""
         from .morphology import lemma_candidates
