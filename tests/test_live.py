@@ -17,13 +17,13 @@ def test_crop_targets_actual_cursor():
     data = {
         "text": ["gehen", "bleiben"],
         "conf": [98, 95],
-        "left": [520, 940],
-        "top": [190, 190],
+        "left": [345, 940],
+        "top": [125, 125],
         "width": [90, 100],
         "height": [30, 30],
     }
-    # With cursor (400, 200), crop begins at (140, 100), so text x 520
-    # corresponds to absolute x=400; y 190 corresponds to absolute y=195.
+    # With the smaller crop (radius 190x70), the origin is (210, 130),
+    # so the cursor in the 2x image is (380, 140).
     with patch("pytesseract.image_to_data", return_value=data):
         assert recognize_crop(image, (400, 200), "deu") == "gehen"
 
