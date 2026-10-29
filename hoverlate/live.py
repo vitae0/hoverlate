@@ -136,12 +136,13 @@ def recognize_crop(image, cursor, lang):
     return hovered_word(data, (x - left) * 2, (y - top) * 2)
 
 
-def read_sample(sample):
+def read_sample(sample, cursor=None):
     from gi.repository import Gst, GstVideo
     from PIL import Image
 
     buffer = sample.get_buffer()
-    cursor = get_cursor_metadata(buffer)
+    if cursor is None:
+        cursor = get_cursor_metadata(buffer)
     if cursor is None:
         return None
     caps = sample.get_caps().get_structure(0)
@@ -189,8 +190,6 @@ def stream_loop(fd, node, settings, events, stop):
         pipeline.add(elem)
     if not (src.link(converter) and converter.link(caps) and caps.link(sink)):
         raise RuntimeError("Could not connect the video pipeline")
-    if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
-        raise RuntimeError("Could not start PipeWire stream")
     translator = ThrottledTranslator(settings.source, settings.target)
     # Capture cursor ROI *before* videoconvert. Some video transforms can
     # drop/alter GstVideoRegionOfInterestMeta on their output buffers.
@@ -213,6 +212,9 @@ def stream_loop(fd, node, settings, events, stop):
 
     probe_pad = src.get_static_pad("src")
     probe_id = probe_pad.add_probe(Gst.PadProbeType.BUFFER, capture_source_cursor)
+    if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
+        probe_pad.remove_probe(probe_id)
+        raise RuntimeError("Could not start PipeWire stream")
     last_position = None
     steady_since = time.monotonic()
     last_ocr = 0.0
@@ -235,8 +237,8 @@ def stream_loop(fd, node, settings, events, stop):
                     cursor_frames = cursor_state["cursor_frames"]
                 # A brief gap in cursor metadata is normal; reuse the most
                 # recent source-side position, not an unrelated OCR result.
-                if cursor is not None and time.monotonic() - last_seen > 3.0:
-                    cursor = None
+                # Cursor ROI is not guaranteed on every buffer. Preserve the
+                # last valid coordinate until a new cursor update arrives.
                 if cursor is None:
                     if time.monotonic() - first_frame > 15:
                         raise RuntimeError(
@@ -255,7 +257,7 @@ def stream_loop(fd, node, settings, events, stop):
             if now - steady_since < settings.dwell_ms / 1000 or now - last_ocr < 1.0:
                 continue
             last_ocr = now
-            data = read_sample(sample)
+            data = read_sample(sample, cursor=cursor)
             if data is None:
                 continue
             cursor, image = data
