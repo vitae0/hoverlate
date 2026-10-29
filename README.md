@@ -2,7 +2,7 @@
 
 **Translate German words by hovering over them, including inside games.**
 
-Hoverlate v0.4 restores **continuous cursor tracking and live OCR** on Wayland. Instead of a GNOME Shell extension, it uses ScreenCast desktop portal permissions and PipeWire cursor metadata. Once you approve screen sharing, Hoverlate reads the word below your cursor after ~400 ms of stillness.
+Hoverlate v0.4.1 provides **continuous cursor tracking and live OCR** on Wayland. Instead of a GNOME Shell extension, it uses ScreenCast desktop portal permissions and PipeWire cursor metadata. Once you approve screen sharing, Hoverlate reads the word below your cursor after ~400 ms of stillness. The v0.4.1 release adds online-translation request pacing, cached-word reuse, and automatic cooldown after Google rate-limit responses.
 
 > **Experimental:** The live GNOME Wayland backend has not been end-to-end tested on GNOME Shell 50.1 or Bad End Theater. Cursor metadata availability and tooltip positioning are compositor-dependent.
 
@@ -70,7 +70,9 @@ No video frames are intentionally stored on disk. **Recognized text** is transmi
 - Select the correct monitor; the app cannot follow the pointer outside a monitor you share.
 - Fullscreen-exclusive games may cover the tooltip; windowed or borderless mode can help.
 - Stylized fonts and text recognition errors may cause wrong translations.
-- Translations require internet access and can be rate limited.
+- Translations use an unofficial online service and still require internet. Network requests are paced at least **3 seconds apart**; repeated words are served immediately from an in-memory cache.
+- If the provider returns HTTP 429 / 'too many requests', Hoverlate **keeps tracking the mouse** but pauses new online requests for 60 seconds, doubling the pause on repeated limit errors (up to 15 minutes). Cached translations remain usable. This cannot bypass a provider-side block.
+- The word cache lasts only for the current process; restarting Hoverlate will not clear a server-side limit.
 
 ## Tests
 
