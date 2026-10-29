@@ -48,6 +48,42 @@ def summarize_definition(raw: bytes, *, limit: int = 280) -> str:
     return " · ".join(lines)[:limit].strip(" ·")
 
 
+def compact_gloss(definition: str, headword: str = "") -> str:
+    """Return only the first short English meaning for a hover tooltip.
+
+    Trim secondary senses, example sentences and dictionary grammar notes.
+    This deliberately favors a tiny gloss over a complete definition.
+    """
+    if not definition:
+        return ""
+    # FreeDict data sometimes repeats the headword as the first line.
+    candidates = re.split(r"\s*·\s*|[\r\n]+", definition)
+    text = ""
+    for candidate in candidates:
+        candidate = candidate.strip(" \t–—-: ")
+        candidate = re.sub(r"^(?:\d+[.)]\s*|(?:translation|translations|meaning|meanings)\s*:\s*)",
+                           "", candidate, flags=re.IGNORECASE)
+        if normalize(candidate) == normalize(headword):
+            continue
+        if candidate:
+            text = candidate
+            break
+    if not text:
+        return ""
+    # A dictionary can include multiple senses and annotations.
+    text = re.split(r"\s*(?:;|\|| / | — | – |→)\s*", text, maxsplit=1)[0]
+    text = re.sub(r"^\([^)]{1,14}\)\s*", "", text)
+    text = re.sub(r"^(?:\[\s*(?:noun|verb|adj|adv|n|v)\s*\]|(?:noun|verb|adj|adv)\s*:)\s*",
+                  "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*\([^)]{1,36}\)\s*$", "", text)
+    text = re.sub(r"\s+", " ", text).strip(" .,;:/·")
+    # Limit long explanatory phrases in the on-hover bubble.
+    words = text.split()
+    if len(words) > 6:
+        text = " ".join(words[:6])
+    return text[:56].rstrip(" ,;:-")
+
+
 class FreeDictTranslator:
     """Local exact-headword dictionary lookup; never accesses the network."""
 
@@ -107,16 +143,16 @@ class FreeDictTranslator:
     def try_translate(self, word: str) -> str:
         key = normalize(word)
         if not key:
-            return "No word recognized"
+            return ""
         references = self._index.get(key)
         if not references:
-            return f"No dictionary entry for '{word}'"
-        meanings = []
+            return ""
         for offset, size in references:
-            meaning = summarize_definition(self._data[offset:offset + size])
-            if meaning and meaning not in meanings:
-                meanings.append(meaning)
-        return " / ".join(meanings)[:360] if meanings else f"No definition for '{word}'"
+            raw = summarize_definition(self._data[offset:offset + size])
+            meaning = compact_gloss(raw, word)
+            if meaning:
+                return meaning
+        return ""
 
 
 def make_translator(source: str = "de", target: str = "en", mode: str = "dictionary"):
