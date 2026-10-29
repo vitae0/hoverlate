@@ -288,6 +288,7 @@ def stream_loop(fd, node, settings, events, stop):
                 continue
             ocr_failures = 0
             if not word:
+                last_word = None  # Allows the same word to reappear after text changes.
                 events.hide.emit()
                 continue
             if last_word is not None and word.casefold() == last_word.casefold():
