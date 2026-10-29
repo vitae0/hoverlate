@@ -15,8 +15,8 @@ from .translate import WordTranslator
 
 def main(argv: list[str] | None = None) -> int:
     if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
-        from .snap import main as screenshot_main
-        return screenshot_main(argv)
+        from .live import main as live_main
+        return live_main(argv)
     parser = argparse.ArgumentParser(description="Hover over on-screen text to translate it (X11 MVP).")
     parser.add_argument("--source", default="de", help="Translation source language (default: de)")
     parser.add_argument("--target", default="en", help="Translation target language (default: en)")
