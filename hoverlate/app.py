@@ -18,6 +18,8 @@ def main(argv: list[str] | None = None) -> int:
         from .live import main as live_main
         return live_main(argv)
     parser = argparse.ArgumentParser(description="Hover over on-screen text to translate it (X11 MVP).")
+    from . import __version__
+    parser.add_argument("--version", action="version", version=f"Hoverlate {__version__}")
     parser.add_argument("--source", default="de", help="Translation source language (default: de)")
     parser.add_argument("--target", default="en", help="Translation target language (default: en)")
     parser.add_argument("--ocr-lang", default="deu+eng", help="Tesseract languages (default: deu+eng)")
