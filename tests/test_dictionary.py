@@ -71,6 +71,8 @@ def test_lookup_unicode_casefold_and_multiple_definitions(tmp_path):
     assert translator.try_translate("äPFEL") == "apples"
     assert translator.try_translate("verlassen") == "to leave"
     assert translator.try_translate("niemals") == ""
+    assert translator.has_word("ging")
+    assert not translator.has_word("niemals")
     assert translator.try_translate("ging") == "go"
     assert translator.try_translate("gespielt") == "to play"
     assert translator.try_translate("spielte") == "to play"
