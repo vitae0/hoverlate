@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hoverlate"
-version = "0.3.0"
+version = "0.4.0"
 description = "Translate words in games and apps by hovering over on-screen text."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,6 +26,7 @@ dev = ["pytest>=8,<10"]
 [project.scripts]
 hoverlate = "hoverlate.app:main"
 hoverlate-snap = "hoverlate.snap:main"
+hoverlate-live = "hoverlate.live:main"
 
 [tool.setuptools.packages.find]
 include = ["hoverlate*"]
