@@ -50,8 +50,11 @@ async def run(source: str, target: str, ocr_lang: str, dwell_ms: int) -> None:
     except Exception as exc:
         bus.disconnect()
         raise RuntimeError(
-            "GNOME Shell bridge unavailable. Install and enable hoverlate@hoverlate.dev "
-            "as described in README; you may need to log out and back in."
+            "GNOME Shell bridge unavailable. Confirm 'gnome-extensions info "
+            "hoverlate@hoverlate.dev' shows State: ACTIVE, then try "
+            "'gdbus introspect --session --dest org.hoverlate.Shell "
+            "--object-path /org/hoverlate/Shell'. "
+            f"Original D-Bus error: {type(exc).__name__}: {exc}"
         ) from exc
     translator = WordTranslator(source, target)
     pos = None
