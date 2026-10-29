@@ -2,12 +2,13 @@
 
 Translate German words by hovering over them in games, without cloud translation.
 
-## v0.6: lightweight offline dictionary
+## v0.6.1: compact offline word popups
 
 The default translation backend is now **FreeDict German -> English**, installed from Ubuntu's own package repository.
 
 - **No PyTorch, CUDA, Stanza, Argos Translate or Google requests in the default installation.**
 - Dictionary lookups happen locally with Python's standard library.
+- Hover tooltip shows only the first short meaning (usually one to four words) in a compact, unobtrusive bubble. Missing entries produce no bubble. The default hover delay is **150 ms** (adjustable with `--dwell-ms`).
 - Live cursor tracking and OCR still use the experimental GNOME Wayland ScreenCast/PipeWire backend.
 - Exact word lookup is fast. FreeDict is a headword dictionary, not a sentence-level machine translation model. Inflected German words may not be found, and some dictionary entries contain multiple meanings.
 - Missing words are reported as missing. Hoverlate does not invent translations or silently switch to the internet.
@@ -37,7 +38,7 @@ source .venv/bin/activate
 python -m pip install -e .
 ~~~
 
-On Wayland, GNOME asks to share the monitor containing your game. Once you approve it, hover a German word for ~400ms and Hoverlate attempts OCR and local dictionary lookup. Quit via Ctrl+C. This is an experimental live integration and may need further desktop-specific fixes.
+On Wayland, GNOME asks to share the monitor containing your game. Once you approve it, hover a German word for ~150ms and Hoverlate attempts OCR and local dictionary lookup. Quit via Ctrl+C. This is an experimental live integration and may need further desktop-specific fixes.
 
 ### Offline and optional online modes
 
