@@ -29,10 +29,14 @@ def _fixture(tmp_path):
     data = b""
     records = []
     for headword, definition in [
-        ("gehen", "go; walk"),
-        ("Äpfel", "apples"),
-        ("verlassen", "to leave; abandon"),
-        ("gehen", "to move"),
+        ("gehen", "gehen /ˈɡeːən/ v.\ngo; walk"),
+        ("Äpfel", "Äpfel [ˈɛpfəl] n.\napples"),
+        ("verlassen", "verlassen [fɛɐˈlasən] v.\nto leave; abandon"),
+        ("gehen", "gehen\n[ˈɡeːən]\nv.\nto move"),
+        ("spielen", "spielen /ˈʃpiːlən/ v.\nto play; perform"),
+        ("machen", "machen [ˈmaxən] v.\nmake; do"),
+        ("sein", "sein [zaɪn] v.\nbe; exist"),
+        ("aufmachen", "aufmachen [ˈaʊfmaxən] v.\nopen; unlock"),
     ]:
         entry = definition.encode("utf-8")
         records.append((headword, len(data), len(entry)))
@@ -62,11 +66,17 @@ def test_invalid_base64():
 def test_lookup_unicode_casefold_and_multiple_definitions(tmp_path):
     idx, data = _fixture(tmp_path)
     translator = FreeDictTranslator(index_path=idx, data_path=data)
-    assert translator.entry_count == 3
+    assert translator.entry_count == 7
     assert translator.try_translate("Gehen") == "go"
     assert translator.try_translate("äPFEL") == "apples"
     assert translator.try_translate("verlassen") == "to leave"
     assert translator.try_translate("niemals") == ""
+    assert translator.try_translate("ging") == "go"
+    assert translator.try_translate("gespielt") == "to play"
+    assert translator.try_translate("spielte") == "to play"
+    assert translator.try_translate("machst") == "make"
+    assert translator.try_translate("aufgemacht") == "open"
+    assert translator.try_translate("bin") == "be"
 
 
 def test_missing_dictionary_raises_actionable_error(tmp_path):
@@ -111,3 +121,20 @@ def test_only_german_english_supported(tmp_path):
 )
 def test_compact_gloss_selects_first_short_meaning(definition, headword, expected):
     assert compact_gloss(definition, headword) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "word", "gloss"),
+    [
+        ("gehen /ˈɡeːən/ v.\ngo; walk", "gehen", "go"),
+        ("verlassen\n[fɛɐˈlasən]\nverb\nto leave; abandon", "verlassen", "to leave"),
+        ("spielen [ˈʃpiːlən] v. to play; perform", "spielen", "to play"),
+        ("gehen · [v] · go; walk · move", "gehen", "go"),
+        ("gehen [ˈɡeːən]\nv.", "gehen", ""),
+        ("<p>gehen /ˈɡeːən/</p><br><p>go; walk</p>", "gehen", "go"),
+    ],
+)
+def test_realistic_freedict_headwords_and_ipa_are_never_used_as_meanings(
+    raw, word, gloss
+):
+    assert compact_gloss(raw, word) == gloss
