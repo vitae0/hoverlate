@@ -169,7 +169,7 @@ def stream_loop(fd, node, settings, events, stop):
     gi.require_version("Gst", "1.0")
     gi.require_version("GstVideo", "1.0")
     from gi.repository import Gst
-    from .translate import WordTranslator
+    from .translate import ThrottledTranslator, TranslationRateLimited
 
     Gst.init(None)
     src = Gst.ElementFactory.make("pipewiresrc", "capture")
@@ -191,7 +191,7 @@ def stream_loop(fd, node, settings, events, stop):
         raise RuntimeError("Could not connect the video pipeline")
     if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
         raise RuntimeError("Could not start PipeWire stream")
-    translator = WordTranslator(settings.source, settings.target)
+    translator = ThrottledTranslator(settings.source, settings.target)
     last_position = None
     steady_since = time.monotonic()
     last_ocr = 0.0
@@ -229,7 +229,24 @@ def stream_loop(fd, node, settings, events, stop):
                 continue
             if word == last_word:
                 continue
-            translation = translator.translate(word)
+            try:
+                translation = translator.try_translate(word)
+            except TranslationRateLimited as exc:
+                # A 429 is not fatal: cursor tracking and OCR keep working,
+                # cached translations remain available during the cooldown.
+                print("Hoverlate live: " + str(exc), file=sys.stderr, flush=True)
+                events.show.emit("Hoverlate", f"Rate limited; retry in {exc.wait_seconds:.0f}s",
+                                 cursor[0], cursor[1])
+                continue
+            except Exception as exc:
+                # Network outages and temporary translation failures must not
+                # close the entire screen-sharing session.
+                print(f"Hoverlate live: translation temporarily unavailable: {exc}",
+                      file=sys.stderr, flush=True)
+                continue
+            if translation is None:
+                # Request pacing/cooldown is active; check again on later frames.
+                continue
             events.show.emit(word, translation, cursor[0], cursor[1])
             last_word = word
     finally:
