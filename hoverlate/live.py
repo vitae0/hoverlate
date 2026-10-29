@@ -22,6 +22,18 @@ def request_path(sender, token):
     return f"{ROOT}/request/{sender.lstrip(':').replace('.', '_')}/{token}"
 
 
+def should_scan_ocr(now: float, still_since: float, last_scan: float,
+                    dwell_ms: int, has_word: bool) -> bool:
+    """Scan fast after a move; rescan stationary text sparingly.
+
+    The scan timestamp is reset on cursor movement. At a fixed position,
+    repeated OCR of an unchanged word costs CPU without improving UX.
+    """
+    refresh_seconds = 2.0 if has_word else 0.8
+    return (now - still_since >= dwell_ms / 1000
+            and now - last_scan >= refresh_seconds)
+
+
 class ScreenCast:
     def __init__(self):
         self.bus = None
@@ -218,8 +230,9 @@ def stream_loop(fd, node, settings, events, stop):
         raise RuntimeError("Could not start PipeWire stream")
     last_position = None
     steady_since = time.monotonic()
-    last_ocr = 0.0
+    last_ocr = float("-inf")
     last_word = None
+    ocr_failures = 0
     first_frame = time.monotonic()
     try:
         while not stop.is_set():
@@ -253,21 +266,31 @@ def stream_loop(fd, node, settings, events, stop):
             if last_position is None or math.dist(cursor, last_position) > 8:
                 last_position = cursor
                 steady_since = now
+                last_ocr = float("-inf")  # New word: honor the 150 ms dwell, not the prior scan.
                 last_word = None
                 events.hide.emit()
-            if (now - steady_since < settings.dwell_ms / 1000
-                    or now - last_ocr < (1.0 if last_word is not None else 0.20)):
+            if not should_scan_ocr(
+                now, steady_since, last_ocr, settings.dwell_ms, last_word is not None
+            ):
                 continue
             last_ocr = now
-            data = read_sample(sample, cursor=cursor)
-            if data is None:
+            try:
+                data = read_sample(sample, cursor=cursor)
+                if data is None:
+                    continue
+                cursor, image = data
+                word = recognize_crop(image, cursor, settings.ocr_lang)
+            except Exception as exc:
+                ocr_failures += 1
+                if ocr_failures >= 3:
+                    raise RuntimeError(f"OCR failed three times: {exc}") from exc
+                print(f"Hoverlate OCR: temporary error: {exc}", file=sys.stderr)
                 continue
-            cursor, image = data
-            word = recognize_crop(image, cursor, settings.ocr_lang)
+            ocr_failures = 0
             if not word:
                 events.hide.emit()
                 continue
-            if word == last_word:
+            if last_word is not None and word.casefold() == last_word.casefold():
                 continue
             try:
                 translation = translator.try_translate(word)
@@ -326,8 +349,8 @@ def main(argv=None):
     app = QApplication(sys.argv[:1])
     app.setQuitOnLastWindowClosed(False)
     tip = QLabel()
-    tip.setWordWrap(True)
-    tip.setMaximumWidth(240)
+    tip.setWordWrap(False)
+    tip.setMaximumWidth(220)
     # A top-level Qt.ToolTip is an xdg_popup on Wayland and requires a
     # transient parent. Use an ordinary non-activating window instead.
     # Compositors may ignore absolute tip.move() placement.
@@ -343,7 +366,13 @@ def main(argv=None):
     events = Events()
 
     def present(word, english, x, y):
-        tip.setText(english)
+        # Single-line Duolingo-style bubble, never allow definitions to resize
+        # the popup into a tall card. Elide rather than wrapping.
+        compact = " ".join(english.split())
+        visible = tip.fontMetrics().elidedText(
+            compact, Qt.TextElideMode.ElideRight, 196
+        )
+        tip.setText(visible)
         tip.adjustSize()
         # Best effort: absolute popup positioning is compositor-controlled on Wayland.
         tip.move(x + 12, y + 16)
