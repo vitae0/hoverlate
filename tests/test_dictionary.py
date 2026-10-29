@@ -11,6 +11,7 @@ from hoverlate.dictionary import (
     make_translator,
     normalize,
     summarize_definition,
+    compact_gloss,
 )
 
 
@@ -62,10 +63,10 @@ def test_lookup_unicode_casefold_and_multiple_definitions(tmp_path):
     idx, data = _fixture(tmp_path)
     translator = FreeDictTranslator(index_path=idx, data_path=data)
     assert translator.entry_count == 3
-    assert translator.try_translate("Gehen") == "go; walk / to move"
+    assert translator.try_translate("Gehen") == "go"
     assert translator.try_translate("äPFEL") == "apples"
-    assert translator.try_translate("verlassen") == "to leave; abandon"
-    assert "No dictionary entry" in translator.try_translate("niemals")
+    assert translator.try_translate("verlassen") == "to leave"
+    assert translator.try_translate("niemals") == ""
 
 
 def test_missing_dictionary_raises_actionable_error(tmp_path):
@@ -93,3 +94,20 @@ def test_only_german_english_supported(tmp_path):
     idx, data = _fixture(tmp_path)
     with pytest.raises(DictionaryUnavailable, match="de -> en"):
         FreeDictTranslator("fr", "en", index_path=idx, data_path=data)
+
+
+@pytest.mark.parametrize(
+    ("definition", "headword", "expected"),
+    [
+        ("gehen · [v] · go; walk · move", "gehen", "go"),
+        ("verlassen · verb · to leave; abandon", "verlassen", "to leave"),
+        ("walking; wandering", "", "walking"),
+        ("[noun] · cat; feline", "", "cat"),
+        ("1. to be / exist", "", "to be"),
+        ("A very long explanatory phrase with several more words", "",
+         "A very long explanatory"),
+        ("", "", ""),
+    ],
+)
+def test_compact_gloss_selects_first_short_meaning(definition, headword, expected):
+    assert compact_gloss(definition, headword) == expected
