@@ -171,7 +171,7 @@ def stream_loop(fd, node, settings, events, stop):
     gi.require_version("GstVideo", "1.0")
     from gi.repository import Gst
     from .translate import TranslationRateLimited
-    from .offline import make_translator
+    from .dictionary import make_translator
 
     Gst.init(None)
     src = Gst.ElementFactory.make("pipewiresrc", "capture")
@@ -299,8 +299,9 @@ def main(argv=None):
     parser.add_argument("--target", default="en")
     parser.add_argument("--ocr-lang", default="deu+eng")
     parser.add_argument("--dwell-ms", type=int, default=400)
-    parser.add_argument("--translator", choices=["auto", "offline", "google"],
-                        default="auto", help="Prefer installed offline model; otherwise Google")
+    parser.add_argument("--translator", choices=["dictionary", "offline", "auto", "google"],
+                        default="dictionary",
+                        help="Offline FreeDict is the default. Google is explicit opt-in.")
     args = parser.parse_args(argv)
     if args.dwell_ms < 100:
         parser.error("Dwell must be at least 100 milliseconds")
