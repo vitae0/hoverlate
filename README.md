@@ -1,27 +1,10 @@
 # Hoverlate
 
-**Translate words in games and desktop apps simply by hovering over them.**
+Translate German words in games without leaving the game.
 
-Hoverlate v0.2 runs on Linux X11 and includes an **experimental GNOME Wayland backend**. It captures a small screen region around the cursor, uses Tesseract OCR to identify the word beneath it, and shows a click-through translation popup.
+**v0.3: Keyboard shortcut → select a word → English translation.** GNOME Wayland uses the standard XDG Screenshot portal. No GNOME Shell extension, background daemon, or global mouse tracking. The older X11 automatic hover implementation remains available for X11 sessions.
 
-> **Status:** Early MVP. Unit-tested, but not yet verified inside Bad End Theater or a real desktop session. Use windowed/borderless game mode if a fullscreen window hides the popup.
-
-## Features
-
-- German OCR and German → English translations by default.
-- Hover instead of copy/paste: wait about 400 ms over a word.
-- Small-region OCR, non-interactive overlay, and in-memory translation cache.
-- Configurable source, target and OCR languages.
-
-## Install on Ubuntu X11/Xorg
-
-Check your desktop session:
-
-~~~bash
-echo $XDG_SESSION_TYPE
-~~~
-
-For these X11 instructions it must say `x11`. If it says `wayland`, use the GNOME Wayland instructions below.
+## Ubuntu / GNOME Wayland
 
 ~~~bash
 sudo apt update
@@ -31,69 +14,85 @@ cd hoverlate
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
-hoverlate
+hoverlate-snap
 ~~~
 
-Keep the terminal running. Hover over a word and wait for the popup; quit with **Ctrl+C**.
-
-Options:
+If Hoverlate is already cloned and installed:
 
 ~~~bash
-hoverlate --source de --target en --ocr-lang deu+eng --dwell-ms 400
-~~~
-
-To run tests:
-
-~~~bash
-pip install -e '.[dev]'
-pytest -q
-~~~
-
-## Ubuntu GNOME Wayland (experimental)
-
-You do **not** need to switch to X11. GNOME requires an explicitly installed Shell extension for global pointer access and screenshot capture.
-
-~~~bash
-sudo apt update
-sudo apt install -y python3-venv python3-pip tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
-git clone https://github.com/vitae0/hoverlate.git
-cd hoverlate
-python3 -m venv .venv
+cd ~/hoverlate
+git pull --ff-only
 source .venv/bin/activate
-pip install -e '.[wayland]'
-mkdir -p ~/.local/share/gnome-shell/extensions
-cp -r gnome-extension/hoverlate@hoverlate.dev ~/.local/share/gnome-shell/extensions/
-gnome-extensions enable hoverlate@hoverlate.dev
-hoverlate
+python -m pip install -e .
+hoverlate-snap
 ~~~
 
-**If GNOME says the extension is not found**, log out and back in, enable it again, then run `hoverlate` from the virtual environment. Check with `gnome-extensions list --enabled`.
+1. GNOME's standard screenshot picker opens. Select **Selection** and drag a small rectangle around the German word or phrase.
+2. Confirm the screenshot with Enter (or the capture button).
+3. Hoverlate recognizes the text and shows its English translation in an always-on-top window.
+4. Close the popup when finished.
 
-This experimental backend works only with GNOME Shell, not KDE, Hyprland, or Sway. GNOME Shell supplies cursor position, small in-memory screenshots near the pointer (up to 520×220 logical pixels, limited to one capture every 500 ms) and draws the overlay. Python does OCR and translation. It requires no X11 desktop session.
+GNOME may save a screenshot copy to Pictures/Screenshots and/or your clipboard. Hoverlate does not take additional screenshots or send image data to the translation provider. Recognized **text** is sent to Google Translate using the unofficial deep-translator client. Do not use it on sensitive text.
 
-**Privacy warning:** The extension exposes cursor position and small cursor-area screenshots to processes that can reach your user-session D-Bus. While enabled, other local applications may request those captures. Disable it when not actively using Hoverlate, particularly around sensitive content:
+### Keyboard shortcut
+
+Open **Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts → Add Shortcut**.
+
+- Name: Hoverlate
+- Command: absolute path to your Python environment's Hoverlate shortcut entrypoint, for example /home/kewcer/hoverlate/.venv/bin/hoverlate-snap
+- Shortcut: e.g., Ctrl+Alt+Y
+
+Find your executable after activating the environment:
+
+~~~bash
+command -v hoverlate-snap
+~~~
+
+You no longer need to open a terminal. Each screenshot still requires confirmation from GNOME; this is the Wayland security boundary.
+
+### Retire the old GNOME extension
+
+The experimental v0.2 GNOME extension is **not needed**. If it was enabled, disable it:
 
 ~~~bash
 gnome-extensions disable hoverlate@hoverlate.dev
 ~~~
 
-OCR screenshots are not saved to files. Recognized words are sent to the online translation provider. This code has passed syntax and unit checks but has **not yet been tested in a real GNOME Shell session or Bad End Theater**. GNOME release differences, fullscreen game mode, and HiDPI can require fixes.
+You do not need to log out or restart GNOME Shell for v0.3.
 
-## Privacy and limitations
+## X11 automatic hover mode (experimental)
 
-- **Wayland:** GNOME Shell only via the opt-in extension. A normal Wayland application cannot freely read global cursor coordinates or capture the desktop.
-- **Online translations.** Google Translate is accessed through the unofficial \`deep-translator\` client. Recognized words are sent to a third party; never hover over sensitive text while using Hoverlate. This may be rate-limited or unavailable.
-- Screenshots are processed in memory, not saved to disk. The word cache is also memory-only.
-- OCR can struggle with stylized small fonts. Fullscreen-exclusive game surfaces may cover the tooltip.
-- Multi-monitor scaling and fractional DPI alignment are not fully tested.
+On X11, the original hover-translation background process is still available:
 
-## Roadmap
+~~~bash
+echo $XDG_SESSION_TYPE
+hoverlate
+~~~
 
-- [ ] End-to-end test in Bad End Theater on an X11 desktop.
-- [ ] Optional offline translation models.
-- [ ] Sentence context and vocabulary saving.
-- [x] Experimental GNOME Shell Wayland bridge (not yet desktop-tested).
-- [ ] Cross-compositor Wayland portal support.
-- [ ] Windows and macOS support.
+The default hoverlate command detects Wayland and opens the screenshot picker instead. Use hoverlate-snap directly for the new workflow on any desktop supporting the portal.
+
+## Languages
+
+~~~bash
+hoverlate-snap --source de --target en --ocr-lang deu+eng
+~~~
+
+Source and target use Google Translate language codes; OCR uses installed Tesseract language packs.
+
+## Limitations and privacy
+
+- GNOME Wayland is the primary target; other portal implementations are not tested.
+- Screenshots are processed only after explicit user selection; no screen recording.
+- The Screenshot portal can save its own capture and change the system clipboard.
+- The internet translation provider may rate-limit requests.
+- OCR may fail on stylized fonts. Select a tight rectangle.
+- The new path has unit tests, but it has **not been end-to-end tested on Ubuntu GNOME 50.1 or Bad End Theater**.
+
+## Run tests
+
+~~~bash
+pip install -e '.[dev]'
+pytest -q
+~~~
 
 MIT licensed.
