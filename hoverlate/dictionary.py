@@ -49,40 +49,34 @@ def summarize_definition(raw: bytes, *, limit: int = 280) -> str:
 
 
 def compact_gloss(definition: str, headword: str = "") -> str:
-    """Return only the first short English meaning for a hover tooltip.
+    """Extract a single short English gloss for a Duolingo-style hover tip.
 
-    Trim secondary senses, example sentences and dictionary grammar notes.
-    This deliberately favors a tiny gloss over a complete definition.
+    Avoid headword repeats, grammatical labels, alternate senses and examples.
+    Return empty if the entry has no meaningful gloss.
     """
     if not definition:
         return ""
-    # FreeDict data sometimes repeats the headword as the first line.
     candidates = re.split(r"\s*·\s*|[\r\n]+", definition)
-    text = ""
+    labels = {"n", "v", "adj", "adv", "noun", "verb", "adjective",
+              "adverb", "f", "m", "nt", "pron", "pronoun"}
     for candidate in candidates:
-        candidate = candidate.strip(" \t–—-: ")
-        candidate = re.sub(r"^(?:\d+[.)]\s*|(?:translation|translations|meaning|meanings)\s*:\s*)",
-                           "", candidate, flags=re.IGNORECASE)
-        if normalize(candidate) == normalize(headword):
+        candidate = re.sub(
+            r"^(?:\d+[.)]\s*|(?:translation|translations|meaning|meanings)\s*:\s*)",
+            "", candidate.strip(" \t–—-: "), flags=re.IGNORECASE,
+        )
+        candidate = re.sub(r"^\([^)]{1,14}\)\s*", "", candidate)
+        candidate = re.sub(r"^\[\s*(?:noun|verb|adj|adv|n|v)\s*\]\s*", "",
+                           candidate, flags=re.IGNORECASE)
+        candidate = re.sub(r"^(?:noun|verb|adjective|adverb)\s*:\s*", "",
+                           candidate, flags=re.IGNORECASE)
+        candidate = re.split(r"\s*(?:;|\|| / | — | – |→)\s*", candidate, maxsplit=1)[0]
+        candidate = re.sub(r"\s*\([^)]{1,36}\)\s*$", "", candidate)
+        candidate = re.sub(r"\s+", " ", candidate).strip(" .,;:/·")
+        if (not candidate or normalize(candidate) == normalize(headword)
+                or normalize(candidate) in labels):
             continue
-        if candidate:
-            text = candidate
-            break
-    if not text:
-        return ""
-    # A dictionary can include multiple senses and annotations.
-    text = re.split(r"\s*(?:;|\|| / | — | – |→)\s*", text, maxsplit=1)[0]
-    text = re.sub(r"^\([^)]{1,14}\)\s*", "", text)
-    text = re.sub(r"^(?:\[\s*(?:noun|verb|adj|adv|n|v)\s*\]|(?:noun|verb|adj|adv)\s*:)\s*",
-                  "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*\([^)]{1,36}\)\s*$", "", text)
-    text = re.sub(r"\s+", " ", text).strip(" .,;:/·")
-    # Limit long explanatory phrases in the on-hover bubble.
-    words = text.split()
-    if len(words) > 6:
-        text = " ".join(words[:6])
-    return text[:56].rstrip(" ,;:-")
-
+        return " ".join(candidate.split()[:4])[:36].rstrip(" ,;:-")
+    return ""
 
 class FreeDictTranslator:
     """Local exact-headword dictionary lookup; never accesses the network."""
