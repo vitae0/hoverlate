@@ -34,6 +34,11 @@ def should_scan_ocr(now: float, still_since: float, last_scan: float,
             and now - last_scan >= refresh_seconds)
 
 
+def should_forward_frame(now: float, previous: float, fps: int) -> bool:
+    """Drop source video buffers before expensive RGB conversion."""
+    return now - previous >= 1.0 / fps
+
+
 class ScreenCast:
     def __init__(self):
         self.bus = None
@@ -201,7 +206,7 @@ def stream_loop(fd, node, settings, events, stop):
     # Capture cursor ROI *before* videoconvert. Some video transforms can
     # drop/alter GstVideoRegionOfInterestMeta on their output buffers.
     cursor_state = {"last": None, "seen_at": 0.0, "source_frames": 0,
-                    "cursor_frames": 0}
+                    "cursor_frames": 0, "forwarded_at": float("-inf")}
     cursor_lock = threading.Lock()
 
     def capture_source_cursor(_pad, info):
@@ -209,12 +214,17 @@ def stream_loop(fd, node, settings, events, stop):
         if buffer is None:
             return Gst.PadProbeReturn.OK
         position = get_cursor_metadata(buffer)
+        now = time.monotonic()
         with cursor_lock:
             cursor_state["source_frames"] += 1
             if position is not None:
                 cursor_state["last"] = position
-                cursor_state["seen_at"] = time.monotonic()
+                cursor_state["seen_at"] = now
                 cursor_state["cursor_frames"] += 1
+            if not should_forward_frame(now, cursor_state["forwarded_at"],
+                                        settings.capture_fps):
+                return Gst.PadProbeReturn.DROP
+            cursor_state["forwarded_at"] = now
         return Gst.PadProbeReturn.OK
 
     probe_pad = src.get_static_pad("src")
@@ -332,7 +342,10 @@ def main(argv=None):
     parser.add_argument("--version", action="version", version=f"Hoverlate {__version__}")
     parser.add_argument("--source", default="de")
     parser.add_argument("--target", default="en")
-    parser.add_argument("--ocr-lang", default="deu+eng")
+    parser.add_argument("--ocr-lang", default="deu",
+                        help="Tesseract language (German-only is lighter)")
+    parser.add_argument("--capture-fps", type=int, default=12,
+                        help="Process at most this many captured frames per second")
     parser.add_argument("--ocr-mode", choices=["adaptive", "fast"],
                         default="adaptive", help="Adaptive game-font OCR (up to two passes)")
     parser.add_argument("--dwell-ms", type=int, default=150)
@@ -342,6 +355,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.dwell_ms < 100:
         parser.error("Dwell must be at least 100 milliseconds")
+    if not 2 <= args.capture_fps <= 60:
+        parser.error("--capture-fps must be between 2 and 60")
     # Tesseract's OpenMP worker pool can otherwise use all CPU cores for
     # tiny OCR crops. The one-shot OCR process needs only one worker.
     os.environ.setdefault("OMP_THREAD_LIMIT", "1")
